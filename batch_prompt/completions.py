@@ -64,19 +64,6 @@ def listify_prompts(prompt, prompt_args=None):
         
     return prompts, prompt_args
 
-def listify_prompts2(prompt, prompt_args=None):        
-    """
-    TODO: itertools product instead
-    """
-    # Prompt args
-    prompt_args = prompt_args or {}   # default value is empty dict
-    prompt_args = {k: [v] if type(v) not in (list, tuple) else v 
-                   for k, v in prompt_args.items()}
-        
-    # TODO - product of all args
-        
-    return prompts, prompt_args
-
 
 def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5):
     
