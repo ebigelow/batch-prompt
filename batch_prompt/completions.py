@@ -1,12 +1,12 @@
+from math import ceil
 from time import time
 from tqdm import tqdm, trange
 from pprint import pprint
 
 import aiohttp
-import asyncio
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from utils import openai, listify_prompts
+from batch_prompt.utils import openai, print_call_summary
 
 
 DEFAULT_MODEL_ARGS = {
@@ -17,15 +17,15 @@ DEFAULT_MODEL_ARGS = {
 }
 
 
-# Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
-#   https://platform.openai.com/docs/guides/rate-limits/error-mitigation
-@retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(50))
-def completion_backoff(*args, **kwargs):
+@retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
+def complete_backoff(*args, **kwargs):
+    """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
+          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
     return openai.Completion.create(*args, **kwargs)
 
 
-def _call_single(formatted_prompts, prompts, prompt_args, m_args, model_args):
-    completion = completion_backoff(prompt=formatted_prompts, **m_args)
+def single_complete(formatted_prompts, prompts, prompt_args, m_args, model_args):
+    completion = complete_backoff(prompt=formatted_prompts, **m_args)
 
     n = m_args.get('n', 1) 
     results = [
@@ -42,7 +42,43 @@ def _call_single(formatted_prompts, prompts, prompt_args, m_args, model_args):
     ]
     return results, completion
 
-def get_completions(prompt, prompt_args=None, model_args=None, verbose=1, num_batches=1):
+
+def listify_prompts(prompt, prompt_args=None):        
+    """
+    Format prompt str with prompt args, and return (<list of prompts>, <list of kwargs for each>)
+    
+    Args:
+        prompt (str | list[str]) : can be one prompt (str) or multiple prompts (list[str])
+        prompt (dict | list[dict]) : can be one kwarg dict or a list of kwarg dicts
+    """
+    # Prompt args
+    prompt_args = prompt_args or {}   # default value is empty dict
+    prompt_args = prompt_args if type(prompt_args) is list else [prompt_args]  # convert to list
+        
+    # Format prompt / prompts
+    if type(prompt) is str:
+        prompts = [prompt for kwargs in prompt_args]
+    else:
+        prompts = [p for p in prompt for kwargs in prompt_args]
+        prompt_args = [kwargs for p in prompt for kwargs in prompt_args]
+        
+    return prompts, prompt_args
+
+def listify_prompts2(prompt, prompt_args=None):        
+    """
+    TODO: itertools product instead
+    """
+    # Prompt args
+    prompt_args = prompt_args or {}   # default value is empty dict
+    prompt_args = {k: [v] if type(v) not in (list, tuple) else v 
+                   for k, v in prompt_args.items()}
+        
+    # TODO - product of all args
+        
+    return prompts, prompt_args
+
+
+def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5):
     
     prompts, prompt_args = listify_prompts(prompt, prompt_args)
     formatted_prompts = [p.format(**kwargs) for p, kwargs in zip(prompts, prompt_args)]
@@ -52,26 +88,29 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=1, num_ba
     if model_args is not None:
         m_args.update(model_args)
 
-    if verbose > 0:
-        print('='*80)
-        print('Calling OpenAI . . .')
-        t1 = time()
     if verbose > 1:
+        print('='*80)
+        print('Calling OpenAI API . . .')
+        t1 = time()
+    if verbose > 2:
         print('------- Prompts -------')
         pprint(formatted_prompts)
         print('------- API Args -------')
         pprint(m_args)
     
     # Split queries into batches and call OpenAI API
-    range_ = trange if (verbose != 0 and num_batches > 1) else range
-    nb = (len(prompt_args) // num_batches) + 1
+    num_batches = ceil(len(prompt_args) / queries_per_batch)
+
+    range_ = trange if (verbose > 0 and num_batches > 1) else range
+    nq = ceil(len(prompt_args) / num_batches)
 
     completions = []
     results = []
 
     for b in range_(num_batches):
-        i1, i2 = b*nb, (b+1)*nb
-        res, completion = _call_single(
+        i1, i2 = b*nq, (b+1)*nq
+
+        res, completion = single_complete(
             formatted_prompts[i1:i2], prompts[i1:i2], prompt_args[i1:i2], 
             m_args, model_args)
 
@@ -79,62 +118,7 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=1, num_ba
         completions.append(completion)
     
     # Return list of formatted dictionaries
-    if verbose > 0:
-        t2 = time()
-        print('~'*15, 'Done', '~'*15)
-        print(f'Time: {t2 - t1 :.2f}s')
-        print(f'Number of results: {len(results)}')
-
-        # Aggregate usage tokens across batches
-        usage = {'completion_tokens': 0, 'prompt_tokens': 0, 'total_tokens': 0}
-        for completion in completions:
-            for k, v in completion['usage'].items():
-                usage[k] += v
-        pprint(usage)
+    if verbose > 1:
+        print_call_summary(t1, len(results), completions)
 
     return results
-
-
-
-
-
-if __name__ == '__main__':
-    ##### TODO: simple example in main
-    #####
-    #####
-
-
-    # p = """Q: Are the following coin flips from a random coin flip, or non-random coin flip? Why? [Heads, Tails, Heads, Tails, Heads, Tails, Heads, Tails, Heads, Tails]
-    #
-    # A: The flips are from a"""
-    # res = get_completions(p, {'max_tokens': 1})
-
-    n_samples = 64
-    max_tokens = 300
-    time_sleep = 70
-
-    # TOKEN_LIMIT = 9000
-    # n_calls = math.ceil((n_samples * max_tokens) / TOKEN_LIMIT)
-
-
-    # res = []
-
-    # for p_tails in tqdm([10, 30, 50, 70, 90]):
-    #     p_heads = 100 - p_tails
-    #     source_coin = 'a weighted coin, with {}% probability of Heads and {}% probability of Tails'
-    #     source_fair = 'a fair coin, with 50% probability of Heads and 50% probability of Tails'
-
-    #     prompt_instruct = 'Generate a sequence of 1000 random samples from {source}.'
-    #     prompt_context = '[{flips}'
-
-    #     # ---------------------------------------------------------------------------
-    #     for _ in range(2):
-    #         res_ = call_openai_chat_async(
-    #             prompt_instruct, 
-    #             prompt_context,
-    #             system_prompt='Your responses will only consist of comma-separated "Heads" and "Tails" samples.' + \
-    #                           '\nDo not repeat the user\'s messages in your responses.',
-    #             instruct_args={'source': source_coin.format(p_heads, p_tails) if p_heads != 50 else source_fair},
-    #             context_args={'flips': 'Heads,'},
-    #             model_args={'max_tokens': max_tokens, 'n': n_samples, 'model': 'gpt-4'})
-

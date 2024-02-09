@@ -1,12 +1,12 @@
+from tqdm.asyncio import tqdm_asyncio
 from time import time
-from tqdm import tqdm, trange
 from pprint import pprint
 
 import aiohttp
 import asyncio
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from utils import openai, listify_prompts
+from batch_prompt.utils import openai, print_call_summary
 
 
 DEFAULT_MODEL_ARGS = {
@@ -17,110 +17,114 @@ DEFAULT_MODEL_ARGS = {
 }
 
 
-# Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
-#   https://platform.openai.com/docs/guides/rate-limits/error-mitigation
-@retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(50))
+@retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
 async def chat_async_backoff(*args, **kwargs):
+    """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
+          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
     return await openai.ChatCompletion.acreate(*args, **kwargs)
 
-async def get_completion(prompt_instruct, prompt_context, prompt_system, model_args):
-    """Format 3 prompts into a single set of messages. 
+
+# async def single_acomplete_simple(prompt_instruct, prompt_context, prompt_system, model_args):
+#     """Format 3 prompts into a single set of messages. 
+
+#     TODO: make this modular to support arbitrary messages, instead of 
+#           assuming 1 message each for (system, user, assistant)
+#     """
+#     messages = [
+#         {"role": "system", "content": prompt_system},
+#         {"role": "user", "content": prompt_instruct},
+#     ]
+#     if prompt_context is not None:
+#         messages.append({"role": "assistant", "content": prompt_context})
+
+#     return await chat_async_backoff(messages=messages, **model_args)
 
 
-    TODO: could this be modular, to support a list of messages instead of doing this here?
-    """
-    chat_completion = await chat_async_backoff(
-        messages=[
-            {"role": "system", "content": prompt_system},
-            {"role": "user", "content": prompt_instruct},
-            {"role": "assistant", "content": prompt_context},
-        ],
-        **model_args
-    )
-    return chat_completion
+# def acomplete_simple(prompts_instruct, prompts_context, system_prompt, model_args, verbose=1):
+#     async def f():
+#         async with aiohttp.ClientSession() as session:
+#             openai.aiosession.set(session)
+
+#             async_calls = [asyncio.ensure_future(chat_async_backoff(pi, pc, system_prompt, model_args)) 
+#                            for pi, pc in zip(prompts_instruct, prompts_context)]
+
+#             gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
+#             return await gather(*async_calls)
+
+#     # Call OpenAI async
+#     completions = asyncio.run(f())
+#     return completions
+    
 
 
-def call_chat_async(prompts_instruct, prompts_context, system_prompt, model_args):
+def complete_chat_async(messages_ls, model_args, verbose=1):
     async def f():
         async with aiohttp.ClientSession() as session:
             openai.aiosession.set(session)
 
-            async_calls = [asyncio.ensure_future(get_completion(pi, pc, system_prompt, model_args)) 
-                           for pi, pc in zip(prompts_instruct, prompts_context)]
+            async_calls = [asyncio.ensure_future(chat_async_backoff(messages=messages, **model_args)) 
+                           for messages in messages_ls]
 
-            results = await asyncio.gather(*async_calls)
-            return results
+            gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
+            return await gather(*async_calls)
 
     # Call OpenAI async
     completions = asyncio.run(f())
     return completions
     
 
-def get_chat_completions(instructs, contexts, system_prompt='You are a helpful assistant.',
-                         instruct_args=None, context_args=None, model_args=None, verbose=1):
+def flatten(ls):
+    return [i for subl in ls for i in subl]
 
-    ### TODO: batch
-    ### TODO: can this be an abstract fn for both completions + chat APIs?
-    
-    instructs, instruct_args = listify_prompts(instructs, instruct_args)
-    formatted_instructs = [p.format(**kwargs) for p, kwargs in zip(instructs, instruct_args)]
+def listify_messages(messages, messages_args=None):
+    if len(messages) > 0 and type(messages[0]) is list: 
+        return flatten([listify_messages(msgs, messages_args) for msgs in messages])
+    if messages_args and type(messages_args[0]) is list:
+        return flatten([listify_messages(messages, msg_args) for msg_args in messages_args])
 
-    contexts, context_args = listify_prompts(contexts, context_args)
-    formatted_contexts = [p.format(**kwargs) for p, kwargs in zip(contexts, context_args)]
+    messages_args = messages_args or [{} for _ in messages]
+    return [(messages, messages_args)]
 
-    instruct_args, context_args = zip(*[(ia, xa) for ia in instruct_args for xa in context_args])
-    formatted_instructs, formatted_contexts = zip(*[(i, x) for i in formatted_instructs for x in formatted_contexts])
-    
+
+
+def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2):
+    messages, messages_args = zip(*listify_messages(messages, messages_args))
+    formatted_msgs = [[{'role': m['role'], 
+                        'content': m['content'].format(**kwargs)}
+                       for m, kwargs in zip(msgs, msg_args)]
+                      for msgs, msg_args in zip(messages, messages_args)]
+
     # Model Args
     m_args = DEFAULT_MODEL_ARGS.copy()
     if model_args is not None:
         m_args.update(model_args)
-    n = m_args.get('n', 1) 
+    n = m_args.get('n', 1)
 
-    if verbose > 0:
+    if verbose > 1:
         print('='*80)
         print('Calling OpenAI Chat API . . .')
         t1 = time()
-    if verbose > 1:
-        print('------- Instruct + Context Prompts -------')
-        pprint(list(zip(formatted_instructs, formatted_contexts)))
+    if verbose > 2:
+        print('------- Messages -------')
+        pprint(formatted_msgs)
 
-    completions = call_chat_async(formatted_instructs, formatted_contexts, system_prompt, model_args)
-    
+    completions = complete_chat_async(formatted_msgs, m_args, verbose)
+
     # Return list of formatted dictionaries
     results = [
         {
-            'instruct': i,
-            'context': x,
-            'choice': c,  # only 1 choice from the completion corresponds to this prompt data point
+            'choice': c,
             'completion': completion,
-            'instruct_raw': formatted_instructs[idx],
-            'instruct_args': instruct_args[idx],
-            'context_raw': formatted_contexts[idx],
-            'context_args': context_args[idx],
+            'messages': formatted_msgs[idx],
+            'messages_raw': messages[idx],
+            'messages_args': messages_args[idx],
             'model_args': model_args,
         }
-        for completion in completions
-        for idx, (i, x) in enumerate(zip(formatted_instructs, formatted_contexts))
-        for c in completion.choices[n*idx : n*(idx+1)]
-        # for p_i, p in enumerate(formatted_prompts)
+        for idx, completion in enumerate(completions)
+        for c in completion.choices
     ]
-    if verbose > 0:
-        t2 = time()
-        print('~'*15, 'Done', '~'*15)
-        print(f'Time: {t2 - t1 :.2f}s')
-        print(f'Number of results: {len(results)}')
-        pprint([dict(completion['usage']) for completion in completions])
+    if verbose > 1:
+        print_call_summary(t1, len(results), completions)
 
     return results
 
-
-
-
-
-if __name__ == '__main__':
-    ##### TODO: simple example in main
-    #####
-    #####
-
-    pass
