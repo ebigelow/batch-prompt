@@ -20,6 +20,9 @@ Similar to [parallel-parrot](https://github.com/novex-ai/parallel-parrot), but m
 ## Example use
 
 
+
+### Minimal example
+
 ```lang=python
 p = """Q: Are the following coin flips from a random coin flip, or non-random coin flip? {sequence}
 
@@ -52,9 +55,211 @@ This format is useful by:
 
 
 
+
+### Batching
+
+```lang=python
+prompts = ['I like {food}', 'I hate {food}']
+
+res = batch_prompt.completions(
+    prompts, prompt_args=[{'food': 'pizza'}, {'food': 'apples'}], 
+    model_args={'max_tokens': 10, 'n': 2})
+
+
+>>> res
+[
+ {'prompt': 'I like pizza',
+  'choice': <OpenAIObject at 0x111c3e590> JSON: {
+    "text": ".\n\nThat's surprising.\n\nRight? Is that not",
+    "index": 0,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I like {food}',
+  'prompt_args': {'food': 'pizza'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I like pizza',
+  'choice': <OpenAIObject at 0x10e7288b0> JSON: {
+    "text": "\n\nPizza is a very popular and delicious food",
+    "index": 1,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I like {food}',
+  'prompt_args': {'food': 'pizza'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I like apples',
+  'choice': <OpenAIObject at 0x111c12950> JSON: {
+    "text": "\n\nApples are a delicious fruit that come in",
+    "index": 2,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I like {food}',
+  'prompt_args': {'food': 'apples'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I like apples',
+  'choice': <OpenAIObject at 0x111c12ea0> JSON: {
+    "text": ".\"\n\nApples are a nutritious and delicious fruit",
+    "index": 3,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I like {food}',
+  'prompt_args': {'food': 'apples'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I hate pizza',
+  'choice': <OpenAIObject at 0x111c124a0> JSON: {
+    "text": " too.\n\nOh my God, get out of here",
+    "index": 4,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I hate {food}',
+  'prompt_args': {'food': 'pizza'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I hate pizza',
+  'choice': <OpenAIObject at 0x111c12860> JSON: {
+    "text": ".\n\nGo back and try again.\n\nI love pizza",
+    "index": 5,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I hate {food}',
+  'prompt_args': {'food': 'pizza'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I hate apples',
+  'choice': <OpenAIObject at 0x111c12e00> JSON: {
+    "text": ".\n\nI don't hate apples. apples, but",
+    "index": 6,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I hate {food}',
+  'prompt_args': {'food': 'apples'},
+  'model_args': {'max_tokens': 10, 'n': 2}},
+ {'prompt': 'I hate apples',
+  'choice': <OpenAIObject at 0x111c2f770> JSON: {
+    "text": ". I can't stand the texture and the taste",
+    "index": 7,
+    "logprobs": null,
+    "finish_reason": "length"
+  },
+  'completion': <OpenAIObject text_completion id=cmpl-8qOYTC... >,
+  'prompt_raw': 'I hate {food}',
+  'prompt_args': {'food': 'apples'},
+  'model_args': {'max_tokens': 10, 'n': 2}
+ }
+]
+```
+
+
 ### Chat API
 
-TODO
+```lang=python
+p1 = 'I like {food}'
+p2 = 'I hate {food}'
+f1 = 'pizza'
+f2 = 'apples'
+
+
+msgs = [[{'role': 'user', 'content': p1}], [{'role': 'user', 'content': p2}]]
+res = batch_prompt.chat_completions(
+   msgs, messages_args=[[{'food': f1}], [{'food': f2}]], 
+   model_args={'max_tokens': 10, 'n': 2}, verbose=3)
+```
+
+```
+>>> from pprint import pprint
+>>> for r in res:
+>>>    pprint({k: v for k,v in r.items() if k != 'completion'})
+
+{'completion_tokens': 80, 'prompt_tokens': 40, 'total_tokens': 120}
+{'choice': {'finish_reason': 'length',
+            'index': 0,
+            'logprobs': None,
+            'message': {'content': "That's great! Pizza is a popular and "
+                                   'delicious',
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I like pizza', 'role': 'user'}],
+ 'messages_args': [{'food': 'pizza'}],
+ 'messages_raw': [{'content': 'I like {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+{'choice': {'finish_reason': 'length',
+            'index': 1,
+            'logprobs': None,
+            'message': {'content': "That's great! Pizza is a popular food "
+                                   'enjoyed',
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I like pizza', 'role': 'user'}],
+ 'messages_args': [{'food': 'pizza'}],
+ 'messages_raw': [{'content': 'I like {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+{'choice': {'finish_reason': 'length',
+            'index': 0,
+            'logprobs': None,
+            'message': {'content': "That's great to hear! Apples are a",
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I like apples', 'role': 'user'}],
+ 'messages_args': [{'food': 'apples'}],
+ 'messages_raw': [{'content': 'I like {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+{'choice': {'finish_reason': 'length',
+            'index': 1,
+            'logprobs': None,
+            'message': {'content': "That's great! Apples are a delicious and",
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I like apples', 'role': 'user'}],
+ 'messages_args': [{'food': 'apples'}],
+ 'messages_raw': [{'content': 'I like {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+{'choice': {'finish_reason': 'length',
+            'index': 0,
+            'logprobs': None,
+            'message': {'content': "I'm sorry to hear that. Pizza is a",
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I hate pizza', 'role': 'user'}],
+ 'messages_args': [{'food': 'pizza'}],
+ 'messages_raw': [{'content': 'I hate {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+{'choice': {'finish_reason': 'length',
+            'index': 1,
+            'logprobs': None,
+            'message': {'content': "That's okay, everyone has different "
+                                   'preferences when it',
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I hate pizza', 'role': 'user'}],
+ 'messages_args': [{'food': 'pizza'}],
+ 'messages_raw': [{'content': 'I hate {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+ {'choice': {'finish_reason': 'length',
+            'index': 0,
+            'logprobs': None,
+            'message': {'content': "I'm sorry to hear that. Apples are",
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I hate apples', 'role': 'user'}],
+ 'messages_args': [{'food': 'apples'}],
+ 'messages_raw': [{'content': 'I hate {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+{'choice': {'finish_reason': 'length',
+            'index': 1,
+            'logprobs': None,
+            'message': {'content': 'I understand that not everyone enjoys the '
+                                   'taste of apples',
+                        'role': 'assistant'}},
+ 'messages': [{'content': 'I hate apples', 'role': 'user'}],
+ 'messages_args': [{'food': 'apples'}],
+ 'messages_raw': [{'content': 'I hate {food}', 'role': 'user'}],
+ 'model_args': {'max_tokens': 10, 'n': 2}}
+]
+```
 
 
 
@@ -67,7 +272,7 @@ TODO
 
 ```lang=python
 import sys
-sys.path.append('/path/to/batch-prompt/batch_prompt')
+sys.path.append('/path/to/batch-prompt')
 ```
 
 
@@ -76,7 +281,7 @@ sys.path.append('/path/to/batch-prompt/batch_prompt')
 
 ## Future plans
 
-- [ ] Simple test examples for chat + completions
-- [ ] Batch chat completions with arbitrary messages list
+- [x] Simple test examples for chat + completions
+- [x] Batch chat completions with arbitrary messages list
 - [ ] Generalize beyond OpenAI LLMs: integrate with [pyllms](https://github.com/kagisearch/pyllms/tree/main)
 - [ ] Easier installation: `setup.py` for direct installation; add to pypi if other people find this package useful
