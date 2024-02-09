@@ -24,39 +24,6 @@ async def chat_async_backoff(*args, **kwargs):
     return await openai.ChatCompletion.acreate(*args, **kwargs)
 
 
-# async def single_acomplete_simple(prompt_instruct, prompt_context, prompt_system, model_args):
-#     """Format 3 prompts into a single set of messages. 
-
-#     TODO: make this modular to support arbitrary messages, instead of 
-#           assuming 1 message each for (system, user, assistant)
-#     """
-#     messages = [
-#         {"role": "system", "content": prompt_system},
-#         {"role": "user", "content": prompt_instruct},
-#     ]
-#     if prompt_context is not None:
-#         messages.append({"role": "assistant", "content": prompt_context})
-
-#     return await chat_async_backoff(messages=messages, **model_args)
-
-
-# def acomplete_simple(prompts_instruct, prompts_context, system_prompt, model_args, verbose=1):
-#     async def f():
-#         async with aiohttp.ClientSession() as session:
-#             openai.aiosession.set(session)
-
-#             async_calls = [asyncio.ensure_future(chat_async_backoff(pi, pc, system_prompt, model_args)) 
-#                            for pi, pc in zip(prompts_instruct, prompts_context)]
-
-#             gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
-#             return await gather(*async_calls)
-
-#     # Call OpenAI async
-#     completions = asyncio.run(f())
-#     return completions
-    
-
-
 def complete_chat_async(messages_ls, model_args, verbose=1):
     async def f():
         async with aiohttp.ClientSession() as session:
