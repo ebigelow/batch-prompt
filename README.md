@@ -5,7 +5,7 @@ This is a lightweight wrapper for querying LLMs with batches of prompts. Support
 - Prompt batching with ChatCompletions API, [which does not support multiple prompts in a single API call](https://community.openai.com/t/batching-with-chatcompletion-not-possible-like-it-was-in-completion/81647). Execute many async API calls with retry and exponential backoff logic.
 - Automatically generate raw prompts to query given a list of prompt templates, and a list of keywords. E.g. with the 2 prompts `['I like {food}', 'I hate {food}']` and the 2 keyword dicts `[{'food': 'pizza'}, {'food': 'apples'}]`, generate 4 prompt text strings: `['I like pizza', 'I like apples', I hate pizza', 'I hate apples']`.
 - Unpack results and parse into a standard format, where each item (1) refers to a single LLM output ("choice"), and (2) contains relevant meta-data like the specific prompt and keyword dict used. Results dict is portable - can be pickled and re-loaded in a runtime which only has `openai` installed, `batch_prompt` not required.
-- Split final API calls into smaller batches of prompts (`num_batches` argument), since API limits the number of tokens per LLM query. Note: Completions API is not async, since OpenAI has tighter limits on requests per min. and the API supports batching multiple inputs in a request.
+- Split final API calls into smaller batches of prompts (`queries_per_batch` argument), since API limits the number of tokens per LLM query. Note: Completions API is not async, since OpenAI has tighter limits on requests per min. and the API supports batching multiple inputs in a request.
 
 
 Used for [In-Context Learning Dynamics with Random Binary Sequences](https://arxiv.org/abs/2310.17639), which involved querying GPT models with many batches of prompts.
