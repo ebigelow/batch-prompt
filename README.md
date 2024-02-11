@@ -17,6 +17,21 @@ Similar to [parallel-parrot](https://github.com/novex-ai/parallel-parrot), but m
 
 
 
+
+
+## Installation and setup
+
+1. Update the variables in `batch_prompt/keys.py` with their OpenAI API and organization keys.
+2. Append the `batch_prompt` directory to your system path, e.g.:
+
+```lang=python
+import sys
+sys.path.append('/path/to/batch-prompt')
+```
+
+
+
+
 ## Example use
 
 
@@ -261,19 +276,6 @@ res = batch_prompt.chat_completions(
 ]
 ```
 
-
-
-
-
-## Installation and setup
-
-1. Update the variables in `batch_prompt/keys.py` with their OpenAI API and organization keys.
-2. Append the `batch_prompt` directory to your system path, e.g.:
-
-```lang=python
-import sys
-sys.path.append('/path/to/batch-prompt')
-```
 
 
 
