@@ -24,7 +24,7 @@ Similar to [parallel-parrot](https://github.com/novex-ai/parallel-parrot), but m
 1. Update the variables in `batch_prompt/keys.py` with their OpenAI API and organization keys.
 2. Append the `batch_prompt` directory to your system path, e.g.:
 
-```lang=python
+```python
 import sys
 sys.path.append('/path/to/batch-prompt')
 ```
@@ -38,7 +38,7 @@ sys.path.append('/path/to/batch-prompt')
 
 ### Minimal example
 
-```lang=python
+```python
 p = """Q: Are the following coin flips from a random coin flip, or non-random coin flip? {sequence}
 
 A: The flips are from a"""
@@ -73,7 +73,7 @@ This format is useful by:
 
 ### Batching
 
-```lang=python
+```python
 prompts = ['I like {food}', 'I hate {food}']
 
 res = batch_prompt.completions(
@@ -178,7 +178,7 @@ res = batch_prompt.completions(
 
 ### Chat API
 
-```lang=python
+```python
 p1 = 'I like {food}'
 p2 = 'I hate {food}'
 f1 = 'pizza'
