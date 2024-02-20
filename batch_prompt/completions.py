@@ -53,7 +53,7 @@ def listify_prompts(prompt, prompt_args=None):
     """
     # Prompt args
     prompt_args = prompt_args or {}   # default value is empty dict
-    prompt_args = prompt_args if type(prompt_args) is list else [prompt_args]  # convert to list
+    prompt_args = prompt_args if type(prompt_args) in (list, tuple) else [prompt_args]  # convert to list
         
     # Format prompt / prompts
     if type(prompt) is str:

@@ -55,6 +55,7 @@ def listify_messages(messages, messages_args=None):
 
 
 def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2):
+    # Note: chat completions does not work in jupyter due to async
     messages, messages_args = zip(*listify_messages(messages, messages_args))
     formatted_msgs = [[{'role': m['role'], 
                         'content': m['content'].format(**kwargs)}
