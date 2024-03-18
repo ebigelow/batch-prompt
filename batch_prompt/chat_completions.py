@@ -1,12 +1,9 @@
-from tqdm.asyncio import tqdm_asyncio
 from time import time
 from pprint import pprint
 
-import aiohttp
-import asyncio
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from batch_prompt.utils import openai, print_call_summary
+from batch_prompt.utils import openai, print_call_summary, run_async
 
 
 DEFAULT_MODEL_ARGS = {
@@ -18,26 +15,10 @@ DEFAULT_MODEL_ARGS = {
 
 
 @retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
-async def chat_async_backoff(*args, **kwargs):
+async def chat_async_backoff(messages, *args, **kwargs):
     """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
           https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
-    return await openai.ChatCompletion.acreate(*args, **kwargs)
-
-
-def complete_chat_async(messages_ls, model_args, verbose=1):
-    async def f():
-        async with aiohttp.ClientSession() as session:
-            openai.aiosession.set(session)
-
-            async_calls = [asyncio.ensure_future(chat_async_backoff(messages=messages, **model_args)) 
-                           for messages in messages_ls]
-
-            gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
-            return await gather(*async_calls)
-
-    # Call OpenAI async
-    completions = asyncio.run(f())
-    return completions
+    return await openai.ChatCompletion.acreate(messages=messages, *args, **kwargs)
     
 
 def flatten(ls):
@@ -76,7 +57,7 @@ def get_chat_completions(messages, messages_args=None, model_args=None, verbose=
         print('------- Messages -------')
         pprint(formatted_msgs)
 
-    completions = complete_chat_async(formatted_msgs, m_args, verbose)
+    completions = run_async(chat_async_backoff, formatted_msgs, m_args, verbose, is_chat=True)
 
     # Return list of formatted dictionaries
     results = [

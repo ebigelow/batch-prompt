@@ -285,5 +285,9 @@ res = batch_prompt.chat_completions(
 
 - [x] Simple test examples for chat + completions
 - [x] Batch chat completions with arbitrary messages list
+- [x] Async non-chat completions
+- [ ] Update to use `openai >= 1.0.0` -- client object
 - [ ] Generalize beyond OpenAI LLMs: integrate with [pyllms](https://github.com/kagisearch/pyllms/tree/main)
 - [ ] Easier installation: `setup.py` for direct installation; add to pypi if other people find this package useful
+
+- [ ] (maybe?) Subprocess instead of import to enable async calls from jupyter

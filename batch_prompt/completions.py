@@ -6,7 +6,7 @@ from pprint import pprint
 import aiohttp
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from batch_prompt.utils import openai, print_call_summary
+from batch_prompt.utils import openai, print_call_summary, run_async
 
 
 DEFAULT_MODEL_ARGS = {
@@ -17,12 +17,32 @@ DEFAULT_MODEL_ARGS = {
 }
 
 
+# @retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
+async def complete_async_backoff(prompt, *args, **kwargs):
+    return await openai.Completion.acreate(prompt=prompt, *args, **kwargs)
+
 @retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
 def complete_backoff(*args, **kwargs):
     """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
           https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
     return openai.Completion.create(*args, **kwargs)
 
+
+def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose):
+    completions = run_async(complete_async_backoff, formatted_prompts, m_args, verbose, is_chat=False)
+    results = [
+        {
+            'prompt': p,
+            'choice': c,
+            'completion': completions[p_i],
+            'prompt_raw': prompts[p_i],
+            'prompt_args': prompt_args[p_i],
+            'model_args': model_args,
+        }
+        for p_i, p in enumerate(formatted_prompts)
+        for c in completions[p_i].choices
+    ]
+    return results, completions
 
 def single_complete(formatted_prompts, prompts, prompt_args, m_args, model_args):
     completion = complete_backoff(prompt=formatted_prompts, **m_args)
@@ -65,7 +85,7 @@ def listify_prompts(prompt, prompt_args=None):
     return prompts, prompt_args
 
 
-def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5):
+def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5, use_async=False):
     
     prompts, prompt_args = listify_prompts(prompt, prompt_args)
     formatted_prompts = [p.format(**kwargs) for p, kwargs in zip(prompts, prompt_args)]
@@ -84,28 +104,33 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, querie
         pprint(formatted_prompts)
         print('------- API Args -------')
         pprint(m_args)
-    
-    # Split queries into batches and call OpenAI API
-    num_batches = ceil(len(prompt_args) / queries_per_batch)
 
-    range_ = trange if (verbose > 0 and num_batches > 1) else range
-    nq = ceil(len(prompt_args) / num_batches)
+    if use_async:
+        results, completions = batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose)
+    else:
+        # Split queries into batches and call OpenAI API
+        num_batches = ceil(len(prompt_args) / queries_per_batch)
 
-    completions = []
-    results = []
+        range_ = trange if (verbose > 0 and num_batches > 1) else range
+        nq = ceil(len(prompt_args) / num_batches)
 
-    for b in range_(num_batches):
-        i1, i2 = b*nq, (b+1)*nq
+        completions = []
+        results = []
 
-        res, completion = single_complete(
-            formatted_prompts[i1:i2], prompts[i1:i2], prompt_args[i1:i2], 
-            m_args, model_args)
+        for b in range_(num_batches):
+            i1, i2 = b*nq, (b+1)*nq
 
-        results += res
-        completions.append(completion)
+            res, completion = single_complete(
+                formatted_prompts[i1:i2], prompts[i1:i2], prompt_args[i1:i2], 
+                m_args, model_args)
+
+            results += res
+            completions.append(completion)
     
     # Return list of formatted dictionaries
     if verbose > 1:
         print_call_summary(t1, len(results), completions)
 
     return results
+
+

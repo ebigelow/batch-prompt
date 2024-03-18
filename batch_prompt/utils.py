@@ -2,6 +2,10 @@ from collections import defaultdict
 from time import time
 from pprint import pprint
 
+from tqdm.asyncio import tqdm_asyncio
+import aiohttp
+import asyncio
+
 import openai
 from batch_prompt import keys
 
@@ -33,3 +37,21 @@ def print_call_summary(t1, n_res, completions):
         for k, v in completion['usage'].items():
             usage[k] += v
     pprint(dict(usage))
+
+
+def run_async(call_fn, inputs_ls, model_args, verbose=1, is_chat=False):
+    async def f():
+        async with aiohttp.ClientSession() as session:
+            openai.aiosession.set(session)
+
+            # g = lambda x: (call_fn(messages=x, **model_args) if is_chat else call_fn(prompt=x, **model_args))
+            async_calls = [asyncio.ensure_future(call_fn(lm_input, **model_args)) 
+                           for lm_input in inputs_ls]
+
+            gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
+            return await gather(*async_calls)
+
+    # Call OpenAI async
+    completions = asyncio.run(f())
+    return completions
+
