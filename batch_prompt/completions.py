@@ -6,11 +6,11 @@ from pprint import pprint
 import aiohttp
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from batch_prompt.utils import openai, print_call_summary, run_async
+from batch_prompt.utils import client, client_async, print_call_summary, run_async
 
 
 DEFAULT_MODEL_ARGS = {
-    'engine': 'gpt-3.5-turbo-instruct',
+    'model': 'gpt-3.5-turbo-instruct',
     'n': 1,
     'max_tokens': 5,
     'temperature': 1.0,
@@ -19,13 +19,13 @@ DEFAULT_MODEL_ARGS = {
 
 # @retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
 async def complete_async_backoff(prompt, *args, **kwargs):
-    return await openai.Completion.acreate(prompt=prompt, *args, **kwargs)
+    return await client_async.completions.create(prompt=prompt, *args, **kwargs)
 
 @retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
 def complete_backoff(*args, **kwargs):
     """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
           https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
-    return openai.Completion.create(*args, **kwargs)
+    return client.completions.create(*args, **kwargs)
 
 
 def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose):
@@ -33,7 +33,7 @@ def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args,
     results = [
         {
             'prompt': p,
-            'choice': c,
+            'choice': c.dict(),   # convert to dict for backward compatility
             'completion': completions[p_i],
             'prompt_raw': prompts[p_i],
             'prompt_args': prompt_args[p_i],
@@ -51,7 +51,7 @@ def single_complete(formatted_prompts, prompts, prompt_args, m_args, model_args)
     results = [
         {
             'prompt': p,
-            'choice': c,  # only 1 choice from the completion corresponds to this prompt data point
+            'choice': c.dict(),  # only 1 choice from the completion corresponds to this prompt data point
             'completion': completion,
             'prompt_raw': prompts[p_i],
             'prompt_args': prompt_args[p_i],

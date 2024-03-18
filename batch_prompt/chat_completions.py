@@ -3,7 +3,7 @@ from pprint import pprint
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from batch_prompt.utils import openai, print_call_summary, run_async
+from batch_prompt.utils import client_async, print_call_summary, run_async
 
 
 DEFAULT_MODEL_ARGS = {
@@ -18,7 +18,7 @@ DEFAULT_MODEL_ARGS = {
 async def chat_async_backoff(messages, *args, **kwargs):
     """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
           https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
-    return await openai.ChatCompletion.acreate(messages=messages, *args, **kwargs)
+    return await client_async.chat.completions.create(messages=messages, *args, **kwargs)
     
 
 def flatten(ls):
