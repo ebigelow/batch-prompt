@@ -3,10 +3,7 @@ from time import time
 from tqdm import tqdm, trange
 from pprint import pprint
 
-import aiohttp
-from tenacity import retry, stop_after_attempt, wait_random_exponential
-
-from batch_prompt.utils import client, client_async, print_call_summary, run_async
+from batch_prompt.utils import retry, client, client_async, print_call_summary, run_async, USE_ASYNC
 
 
 DEFAULT_MODEL_ARGS = {
@@ -17,14 +14,12 @@ DEFAULT_MODEL_ARGS = {
 }
 
 
-# @retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
+@retry
 async def complete_async_backoff(prompt, *args, **kwargs):
     return await client_async.completions.create(prompt=prompt, *args, **kwargs)
 
-@retry(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(15))
+@retry
 def complete_backoff(*args, **kwargs):
-    """Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
-          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
     return client.completions.create(*args, **kwargs)
 
 
@@ -85,7 +80,7 @@ def listify_prompts(prompt, prompt_args=None):
     return prompts, prompt_args
 
 
-def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5, use_async=False):
+def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5, use_async=USE_ASYNC):
     
     prompts, prompt_args = listify_prompts(prompt, prompt_args)
     formatted_prompts = [p.format(**kwargs) for p, kwargs in zip(prompts, prompt_args)]
@@ -97,7 +92,7 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, querie
 
     if verbose > 1:
         print('='*80)
-        print('Calling OpenAI API . . .')
+        print(f'Calling OpenAI API  . . .    (async={use_async})')
         t1 = time()
     if verbose > 2:
         print('------- Prompts -------')

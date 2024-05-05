@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 from time import time
 from pprint import pprint
@@ -7,8 +8,9 @@ import asyncio
 
 from openai import OpenAI, AsyncOpenAI
 
-from batch_prompt import keys
+from batch_prompt import keys_eb as keys
 
+from tenacity import stop_after_attempt, wait_random_exponential, retry as retry_tenacity
 
 if keys.API_KEY == "MY_API_KEY":
     raise ImportError('Add your OpenAI API key to keys.py')
@@ -21,6 +23,8 @@ client_async = AsyncOpenAI(
     api_key=keys.API_KEY,
     organization=keys.ORGANIZATION
 )
+
+USE_ASYNC = not ("ipykernel" in sys.modules)   # default: use async unless we're in jupyter
 
 
 def print_call_summary(t1, n_res, completions):
@@ -50,3 +54,8 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, is_chat=False):
     completions = asyncio.run(f())
     return completions
 
+
+# Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
+#          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
+retry = retry_tenacity(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(30))
+# retry = lambda x: x          # Dummy retry func, useful for debugging 
