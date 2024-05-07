@@ -23,19 +23,23 @@ def complete_backoff(*args, **kwargs):
     return client.completions.create(*args, **kwargs)
 
 
-def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose):
-    completions = run_async(complete_async_backoff, formatted_prompts, m_args, verbose, is_chat=False)
+def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose, queries_per_batch):
+    completions = run_async(complete_async_backoff, formatted_prompts, m_args, verbose, queries_per_batch, is_chat=False)
+
+    n = m_args.get('n', 1) 
+    qpb = lambda p_i: p_i % queries_per_batch
+
     results = [
         {
             'prompt': p,
             'choice': c.dict(),   # convert to dict for backward compatility
-            'completion': completions[p_i],
+            'completion': completions[p_i // queries_per_batch],
             'prompt_raw': prompts[p_i],
             'prompt_args': prompt_args[p_i],
             'model_args': model_args,
         }
-        for p_i, p in enumerate(formatted_prompts)
-        for c in completions[p_i].choices
+        for p_i, p in enumerate(formatted_prompts)    
+        for c in completions[p_i // queries_per_batch].choices[n*qpb(p_i) : n*(qpb(p_i) + 1)]   # un-batch queries
     ]
     return results, completions
 
@@ -101,7 +105,7 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, querie
         pprint(m_args)
 
     if use_async:
-        results, completions = batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose)
+        results, completions = batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose, queries_per_batch)
     else:
         # Split queries into batches and call OpenAI API
         num_batches = ceil(len(prompt_args) / queries_per_batch)

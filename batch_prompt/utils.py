@@ -2,15 +2,15 @@ import sys
 from collections import defaultdict
 from time import time
 from pprint import pprint
+import numpy as np
 
-from tqdm.asyncio import tqdm_asyncio
 import asyncio
+from tqdm.asyncio import tqdm_asyncio
+from tenacity import stop_after_delay, wait_random_exponential, retry as retry_tenacity
 
 from openai import OpenAI, AsyncOpenAI
 
 from batch_prompt import keys_eb as keys
-
-from tenacity import stop_after_attempt, wait_random_exponential, retry as retry_tenacity
 
 if keys.API_KEY == "MY_API_KEY":
     raise ImportError('Add your OpenAI API key to keys.py')
@@ -42,10 +42,13 @@ def print_call_summary(t1, n_res, completions):
     pprint(dict(usage))
 
 
-def run_async(call_fn, inputs_ls, model_args, verbose=1, is_chat=False):
+def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1, is_chat=False):
+    qpb = queries_per_batch
+
     async def f():
-        async_calls = [asyncio.ensure_future(call_fn(lm_input, **model_args)) 
-                       for lm_input in inputs_ls]
+        async_calls = [asyncio.ensure_future(call_fn(
+                        inputs_ls[i : i+qpb] if qpb > 1 else inputs_ls[i], **model_args)) 
+                       for i in np.arange(0, len(inputs_ls), qpb)]
 
         gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
         return await gather(*async_calls)
@@ -57,5 +60,6 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, is_chat=False):
 
 # Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
 #          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
-retry = retry_tenacity(wait=wait_random_exponential(min=1, max=70), stop=stop_after_attempt(30))
+
+retry = retry_tenacity(wait=wait_random_exponential(min=1, max=70))   # , stop=stop_after_attempt(100)
 # retry = lambda x: x          # Dummy retry func, useful for debugging 
