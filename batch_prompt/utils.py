@@ -64,7 +64,7 @@ async def gather_with_concurrency(gather, n, *coros):
     return await gather(*(sem_coro(c) for c in coros))
 
 def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1, 
-              concurrency=100, is_chat=False):
+              concurrency=1000, is_chat=False):
     qpb = queries_per_batch
     n_inputs = len(inputs_ls)
     concurrency = min(concurrency, n_inputs)
