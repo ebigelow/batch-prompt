@@ -7,8 +7,9 @@ import numpy as np
 import requests
 import httpx
 import asyncio
+from tqdm import tqdm
 from tqdm.asyncio import tqdm_asyncio
-from tenacity import stop_after_delay, wait_random_exponential, retry as retry_tenacity
+from tenacity import stop_after_attempt, wait_random_exponential, wait_random, retry as retry_tenacity
 
 from openai import OpenAI, AsyncOpenAI
 
@@ -45,29 +46,53 @@ def print_call_summary(t1, n_res, completions):
     # Aggregate usage tokens across batches
     usage = defaultdict(lambda: 0)
     for completion in completions:
-        for k, v in completion.dict()['usage'].items():
+        for k, v in completion.usage.dict().items():
             usage[k] += v
     pprint(dict(usage))
 
 
-def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1, is_chat=False):
-    qpb = queries_per_batch
+async def gather_with_concurrency(gather, n, *coros):
+    """
+    Limit the amount of concurrent calls from asyncio.
 
-    async def f():
-        async_calls = [asyncio.ensure_future(call_fn(
+    From: https://stackoverflow.com/a/61478547/4248948
+    """
+    semaphore = asyncio.Semaphore(n)
+    async def sem_coro(coro):
+        async with semaphore:
+            return await coro
+    return await gather(*(sem_coro(c) for c in coros))
+
+def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1, 
+              concurrency=100, is_chat=False):
+    qpb = queries_per_batch
+    n_inputs = len(inputs_ls)
+    concurrency = min(concurrency, n_inputs)
+
+    async def f(n1, n2):
+        n2 = min(n2, n_inputs)
+        async_calls = [asyncio.create_task(call_fn(
                         inputs_ls[i : i+qpb] if qpb > 1 else inputs_ls[i], **model_args)) 
-                       for i in np.arange(0, len(inputs_ls), qpb)]
+                       for i in np.arange(n1, n2, qpb)]
 
         gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
-        return await gather(*async_calls)
+        return await gather_with_concurrency(gather, concurrency, *async_calls)
+        # return await gather(*async_calls)
 
-    # Call OpenAI async
-    completions = asyncio.run(f())
+    range_ = np.arange(0, n_inputs, concurrency)
+    range_ = tqdm(range_) if verbose else range_
+
+    # Call OpenAI in batches of async calls
+    #   Note: without this batching, the loop above hangs for me with concurrency >2000
+    completions = []
+    for n1 in range_:
+        completions += asyncio.run(f(n1, n1 + concurrency))
     return completions
 
 
 # Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
 #          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
 
-retry = retry_tenacity(wait=wait_random_exponential(min=1, max=70))   # , stop=stop_after_attempt(100)
+# retry = retry_tenacity(wait=wait_random_exponential(exp_base=1.1, multiplier=.5, max=70), stop=stop_after_attempt(100))
+retry = retry_tenacity(wait=wait_random(), stop=stop_after_attempt(100))
 # retry = lambda x: x          # Dummy retry func, useful for debugging 
