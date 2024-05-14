@@ -3,7 +3,7 @@ from time import time
 from tqdm import tqdm, trange
 from pprint import pprint
 
-from batch_prompt.utils import retry, client, client_async, print_call_summary, run_async, USE_ASYNC
+from batch_prompt.utils import retry, client, client_async, print_call_summary, run_async, USE_ASYNC, simplify_completion
 
 
 DEFAULT_MODEL_ARGS = {
@@ -23,7 +23,7 @@ def complete_backoff(*args, **kwargs):
     return client.completions.create(*args, **kwargs)
 
 
-def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose, queries_per_batch):
+def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose, queries_per_batch, simple_completion=True):
     completions = run_async(complete_async_backoff, formatted_prompts, m_args, verbose, queries_per_batch, is_chat=False)
 
     n = m_args.get('n', 1) 
@@ -33,7 +33,8 @@ def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args,
         {
             'prompt': p,
             'choice': c.dict(),   # convert to dict for backward compatility
-            'completion': completions[p_i // queries_per_batch],
+            'completion': simplify_completion(completions[p_i // queries_per_batch])  \
+                          if simple_completion else completions[p_i // queries_per_batch].dict(),
             'prompt_raw': prompts[p_i],
             'prompt_args': prompt_args[p_i],
             'model_args': model_args,

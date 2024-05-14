@@ -3,7 +3,7 @@ from pprint import pprint
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from batch_prompt.utils import retry, client_async, print_call_summary, run_async
+from batch_prompt.utils import retry, client_async, print_call_summary, run_async, simplify_completion
 
 
 DEFAULT_MODEL_ARGS = {
@@ -32,14 +32,13 @@ def listify_messages(messages, messages_args=None):
     return [(messages, messages_args)]
 
 
-
-def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2):
+def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2, simple_completion=True):
     # Note: chat completions does not work in jupyter due to async
-    messages, messages_args = zip(*listify_messages(messages, messages_args))
+    messages_ls, messages_args_ls = zip(*listify_messages(messages, messages_args))
     formatted_msgs = [[{'role': m['role'], 
-                        'content': m['content'].format(**kwargs)}
+                        'content': m['content'].format(**kwargs) if kwargs else m['content']}
                        for m, kwargs in zip(msgs, msg_args)]
-                      for msgs, msg_args in zip(messages, messages_args)]
+                      for msgs, msg_args in zip(messages_ls, messages_args_ls)]
 
     # Model Args
     m_args = DEFAULT_MODEL_ARGS.copy()
@@ -60,11 +59,11 @@ def get_chat_completions(messages, messages_args=None, model_args=None, verbose=
     # Return list of formatted dictionaries
     results = [
         {
-            'choice': c,
-            'completion': completion,
+            'choice': c.dict(),
+            'completion': simplify_completion(completion) if simple_completion else completion.dict(),
             'messages': formatted_msgs[idx],
-            'messages_raw': messages[idx],
-            'messages_args': messages_args[idx],
+            'messages_raw': messages_ls[idx],
+            'messages_args': messages_args_ls[idx],
             'model_args': model_args,
         }
         for idx, completion in enumerate(completions)

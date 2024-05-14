@@ -27,6 +27,10 @@ client_async = AsyncOpenAI(
 USE_ASYNC = not ("ipykernel" in sys.modules)   # default: use async unless we're in jupyter
 
 
+def simplify_completion(completion):
+    return {k: v for k, v in completion.dict().items() if k != 'choices'}
+
+
 def print_call_summary(t1, n_res, completions):
     """Helper method to print summary stats and query useage for a batch of calls."""
     t2 = time()
@@ -37,7 +41,7 @@ def print_call_summary(t1, n_res, completions):
     # Aggregate usage tokens across batches
     usage = defaultdict(lambda: 0)
     for completion in completions:
-        for k, v in completion.usage.dict().items():
+        for k, v in completion.dict()['usage'].items():
             usage[k] += v
     pprint(dict(usage))
 
