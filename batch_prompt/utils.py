@@ -4,6 +4,8 @@ from time import time
 from pprint import pprint
 import numpy as np
 
+import requests
+import httpx
 import asyncio
 from tqdm.asyncio import tqdm_asyncio
 from tenacity import stop_after_delay, wait_random_exponential, retry as retry_tenacity
@@ -17,11 +19,13 @@ if keys.API_KEY == "MY_API_KEY":
 
 client = OpenAI(
     api_key=keys.API_KEY,
-    organization=keys.ORGANIZATION
+    organization=keys.ORGANIZATION,
+    http_client=httpx.Client(verify=requests.certs.where())
 )
 client_async = AsyncOpenAI(
     api_key=keys.API_KEY,
-    organization=keys.ORGANIZATION
+    organization=keys.ORGANIZATION,
+    http_client=httpx.AsyncClient(verify=requests.certs.where())
 )
 
 USE_ASYNC = not ("ipykernel" in sys.modules)   # default: use async unless we're in jupyter
