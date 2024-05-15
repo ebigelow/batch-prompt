@@ -3,11 +3,11 @@ from time import time
 from tqdm import tqdm, trange
 from pprint import pprint
 
-from batch_prompt.utils import retry, client, client_async, print_call_summary, run_async, USE_ASYNC, simplify_completion
+from batch_prompt.utils import retry, print_call_summary, run_async, CLIENTS, simplify_completion
 
 
 DEFAULT_MODEL_ARGS = {
-    'model': 'gpt-3.5-turbo-instruct',
+    'model': 'gpt-3.5-turbo-instruct-0914',
     'n': 1,
     'max_tokens': 5,
     'temperature': 1.0,
@@ -15,16 +15,20 @@ DEFAULT_MODEL_ARGS = {
 
 
 @retry
-async def complete_async_backoff(prompt, *args, **kwargs):
-    return await client_async.completions.create(prompt=prompt, *args, **kwargs)
-
-@retry
-def complete_backoff(*args, **kwargs):
+def complete_backoff(backend, *args, **kwargs):
+    client = CLIENTS[backend]['sync']
     return client.completions.create(*args, **kwargs)
 
+def complete_async_backoff(backend):
+    @retry
+    async def f(prompt, *args, **kwargs):
+        client = CLIENTS[backend]['async']
+        return await client.completions.create(prompt=prompt, *args, **kwargs)
+    return f
 
-def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose, queries_per_batch, simple_completion=True):
-    completions = run_async(complete_async_backoff, formatted_prompts, m_args, verbose, queries_per_batch, is_chat=False)
+def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, backend, verbose, queries_per_batch, **kwargs):
+    completions = run_async(complete_async_backoff, formatted_prompts, m_args, verbose, queries_per_batch, 
+                            backend=backend, is_chat=False, **kwargs)
 
     n = m_args.get('n', 1) 
     qpb = lambda p_i: p_i % queries_per_batch
@@ -33,8 +37,7 @@ def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args,
         {
             'prompt': p,
             'choice': c.dict(),   # convert to dict for backward compatility
-            'completion': simplify_completion(completions[p_i // queries_per_batch])  \
-                          if simple_completion else completions[p_i // queries_per_batch].dict(),
+            'completion': simplify_completion(completions[p_i // queries_per_batch]),
             'prompt_raw': prompts[p_i],
             'prompt_args': prompt_args[p_i],
             'model_args': model_args,
@@ -44,8 +47,8 @@ def batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args,
     ]
     return results, completions
 
-def single_complete(formatted_prompts, prompts, prompt_args, m_args, model_args):
-    completion = complete_backoff(prompt=formatted_prompts, **m_args)
+def single_complete(formatted_prompts, prompts, prompt_args, m_args, model_args, backend):
+    completion = complete_backoff(backend, prompt=formatted_prompts, **m_args)
 
     n = m_args.get('n', 1) 
     results = [
@@ -85,7 +88,22 @@ def listify_prompts(prompt, prompt_args=None):
     return prompts, prompt_args
 
 
-def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, queries_per_batch=5, use_async=USE_ASYNC):
+def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, 
+                    queries_per_batch=1, use_async=True, backend='openai'):
+    """
+    Query backend completions API, auto-formatting `prompt`s with `prompt_arg`s.
+
+    Arguments:
+        prompt (str | list[str]): Prompt or list of prompts.
+        prompt_args (dict, list[dict]): Prompt args dict (or list of these) with args for
+            string formatting of `prompt`.
+        model_args (dict): Args for backend API
+        verbose (int[0-3]): How verbose will printing be
+        queries_per_batch (int): How many prompts will go in each API batch? 
+             Only works with OpenAI backend
+        use_async (bool): Use async or sync. Set to True when querying in notebooks.
+        backend (str): Which backend to use ('openai' | 'azure' | 'together')
+    """
     
     prompts, prompt_args = listify_prompts(prompt, prompt_args)
     formatted_prompts = [p.format(**kwargs) for p, kwargs in zip(prompts, prompt_args)]
@@ -97,7 +115,7 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, querie
 
     if verbose > 1:
         print('='*80)
-        print(f'Calling OpenAI API  . . .    (async={use_async})')
+        print(f'Calling {backend} API  . . .    (async={use_async})')
         t1 = time()
     if verbose > 2:
         print('------- Prompts -------')
@@ -106,9 +124,10 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, querie
         pprint(m_args)
 
     if use_async:
-        results, completions = batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args, verbose, queries_per_batch)
+        results, completions = batch_acomplete(formatted_prompts, prompts, prompt_args, m_args, model_args,
+                                               backend, verbose, queries_per_batch)
     else:
-        # Split queries into batches and call OpenAI API
+        # Split queries into batches and call backend API
         num_batches = ceil(len(prompt_args) / queries_per_batch)
 
         range_ = trange if (verbose > 0 and num_batches > 1) else range
@@ -122,7 +141,7 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2, querie
 
             res, completion = single_complete(
                 formatted_prompts[i1:i2], prompts[i1:i2], prompt_args[i1:i2], 
-                m_args, model_args)
+                m_args, model_args, backend)
 
             results += res
             completions.append(completion)

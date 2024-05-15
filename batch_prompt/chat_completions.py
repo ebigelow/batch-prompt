@@ -3,21 +3,24 @@ from pprint import pprint
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from batch_prompt.utils import retry, client_async, print_call_summary, run_async, simplify_completion
+from batch_prompt.utils import retry, CLIENTS, print_call_summary, run_async, simplify_completion
 
 
 DEFAULT_MODEL_ARGS = {
-    'model': 'gpt-3.5-turbo',
+    'model': 'gpt-3.5-turbo-0125',
     'n': 1,
     'max_tokens': 5,
     'temperature': 1.0,
 }
 
 
-@retry
-async def chat_async_backoff(messages, *args, **kwargs):
-    return await client_async.chat.completions.create(messages=messages, *args, **kwargs)
-    
+def chat_async_backoff(backend):
+    @retry
+    async def f(messages, *args, **kwargs):
+        client = CLIENTS[backend]['async']
+        return await client.chat.completions.create(messages=messages, *args, **kwargs)
+    return f
+
 
 def flatten(ls):
     return [i for subl in ls for i in subl]
@@ -32,7 +35,8 @@ def listify_messages(messages, messages_args=None):
     return [(messages, messages_args)]
 
 
-def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2, simple_completion=True):
+def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2, 
+                         backend='openai', **kwargs):
     # Note: chat completions does not work in jupyter due to async
     messages_ls, messages_args_ls = zip(*listify_messages(messages, messages_args))
     formatted_msgs = [[{'role': m['role'], 
@@ -48,19 +52,20 @@ def get_chat_completions(messages, messages_args=None, model_args=None, verbose=
 
     if verbose > 1:
         print('='*80)
-        print('Calling OpenAI Chat API . . .')
+        print(f'Calling {backend} Chat API . . .')
         t1 = time()
     if verbose > 2:
         print('------- Messages -------')
         pprint(formatted_msgs)
 
-    completions = run_async(chat_async_backoff, formatted_msgs, m_args, verbose, is_chat=True)
+    completions = run_async(chat_async_backoff, formatted_msgs, m_args, verbose, 
+                            backend=backend, is_chat=True, **kwargs)
 
     # Return list of formatted dictionaries
     results = [
         {
             'choice': c.dict(),
-            'completion': simplify_completion(completion) if simple_completion else completion.dict(),
+            'completion': simplify_completion(completion),
             'messages': formatted_msgs[idx],
             'messages_raw': messages_ls[idx],
             'messages_args': messages_args_ls[idx],
