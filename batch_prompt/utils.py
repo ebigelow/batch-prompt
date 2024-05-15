@@ -29,7 +29,7 @@ client_async = AsyncOpenAI(
     http_client=httpx.AsyncClient(verify=requests.certs.where())
 )
 
-USE_ASYNC = not ("ipykernel" in sys.modules)   # default: use async unless we're in jupyter
+USE_ASYNC = True  #not ("ipykernel" in sys.modules)   # default: use async unless we're in jupyter
 
 
 def simplify_completion(completion):
@@ -51,18 +51,6 @@ def print_call_summary(t1, n_res, completions):
     pprint(dict(usage))
 
 
-async def gather_with_concurrency(gather, n, *coros):
-    """
-    Limit the amount of concurrent calls from asyncio.
-
-    From: https://stackoverflow.com/a/61478547/4248948
-    """
-    semaphore = asyncio.Semaphore(n)
-    async def sem_coro(coro):
-        async with semaphore:
-            return await coro
-    return await gather(*(sem_coro(c) for c in coros))
-
 def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1, 
               concurrency=1000, is_chat=False):
     qpb = queries_per_batch
@@ -76,8 +64,7 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,
                        for i in np.arange(n1, n2, qpb)]
 
         gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
-        return await gather_with_concurrency(gather, concurrency, *async_calls)
-        # return await gather(*async_calls)
+        return await gather(*async_calls)
 
     range_ = np.arange(0, n_inputs, concurrency)
     range_ = tqdm(range_) if verbose else range_
