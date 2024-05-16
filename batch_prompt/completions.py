@@ -2,6 +2,7 @@ from math import ceil
 from time import time
 from tqdm import tqdm, trange
 from pprint import pprint
+from wrapt_timeout_decorator import timeout
 
 from batch_prompt.utils import retry, print_call_summary, run_async, CLIENTS, simplify_completion
 
@@ -21,6 +22,7 @@ def complete_backoff(backend, *args, **kwargs):
 
 def complete_async_backoff(backend):
     @retry
+    @timeout(20)
     async def f(prompt, *args, **kwargs):
         client = CLIENTS[backend]['async']
         return await client.completions.create(prompt=prompt, *args, **kwargs)

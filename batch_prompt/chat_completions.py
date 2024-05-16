@@ -2,6 +2,7 @@ from time import time
 from pprint import pprint
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
+from wrapt_timeout_decorator import timeout
 
 from batch_prompt.utils import retry, CLIENTS, print_call_summary, run_async, simplify_completion
 
@@ -16,6 +17,7 @@ DEFAULT_MODEL_ARGS = {
 
 def chat_async_backoff(backend):
     @retry
+    @timeout(20)
     async def f(messages, *args, **kwargs):
         client = CLIENTS[backend]['async']
         return await client.chat.completions.create(messages=messages, *args, **kwargs)
