@@ -43,6 +43,7 @@ CLIENTS = {
     } if keys.OPENAI_API_KEY != 'MY_API_KEY' else None,
 
     # https://github.com/Azure-Samples/openai
+    # Note: make sure to upgrade your Azure account from "free" to "pay as you go"
     'azure': {
         'sync': AzureOpenAI(
             api_key=keys.AZURE_API_KEY,
@@ -70,6 +71,15 @@ CLIENTS = {
 
 }
 
+# Model map for services like Azure that index by deployments instead of model names
+# This is needed for async batching across multiple backends simultaneously
+MODEL_MAP = {
+    'azure': {
+        'gpt-3.5-turbo-0613': 'gpt-35-0613', 
+        'gpt-3.5-turbo-instruct-0914': 'gpt-35-instruct-0914'
+    }
+}
+
 
 def simplify_completion(completion):
     return {k: v for k, v in completion.dict().items() if k != 'choices'}
@@ -86,24 +96,64 @@ def print_call_summary(t1, n_res, completions):
     usage = defaultdict(lambda: 0)
     for completion in completions:
         for k, v in completion.usage.dict().items():
+            v = v or 0    # replace None with 0
             usage[k] += v
     pprint(dict(usage))
 
 
-def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1, 
+def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,    # TODO: rename `queries_per_batch` to `prompts_per_query`
               backend='openai', concurrency=1000, is_chat=False):
     qpb = queries_per_batch
     n_inputs = len(inputs_ls)
     concurrency = min(concurrency, n_inputs)
 
+    get_inputs = lambda i: inputs_ls[i : i+qpb] if qpb > 1 else inputs_ls[i] 
+
     async def f(n1, n2):
         n2 = min(n2, n_inputs)
-        async_calls = [asyncio.create_task(call_fn(backend)(
-                        inputs_ls[i : i+qpb] if qpb > 1 else inputs_ls[i], **model_args)) 
-                       for i in np.arange(n1, n2, qpb)]
 
+        # Setup async tasks for a single backend
+        if type(backend) is str:
+            backend_idxs = defaultdict(lambda: backend)   # map from async_call index -> backend
+            async_calls = [asyncio.create_task(
+                call_fn(backend)(get_inputs(i), **model_args)) for i in np.arange(n1, n2, qpb)]
+
+        # Multiple backends   -  dict mapping from backend to TPM, e.g. {'openai': 90, 'azure': 240} 
+        elif type(backend) is dict:
+            total_tpm = sum(backend.values())
+
+            async_calls = [lambda backend_, m_args: asyncio.create_task(
+                call_fn(backend_)(get_inputs(i), **m_args)) for i in np.arange(n1, n2, qpb)]
+
+            num_calls = len(async_calls)
+            i1, i2 = 0, 0
+            backend_idxs = {}
+
+            # Split batches according to relative TPM
+            for backend_, tpm in backend.items():
+
+                m_args = model_args.copy()
+                if backend_ == 'azure':
+                    m_args['model'] = MODEL_MAP[backend_][m_args['model']]
+
+                bk_calls = np.ceil(num_calls * tpm / total_tpm).astype(int)
+
+                i1 = i2
+                i2 = min(i1 + bk_calls, num_calls)
+                for i_ in range(i1, i2):
+                    async_calls[i_] = async_calls[i_](backend_, m_args)
+                    backend_idxs[i_] = backend_
+        else:
+            raise TypeError(f'`backend` ({backend}) must be a string or dict from string to TPM counts')
+
+        # Asynchronously collect this batch of data
         gather = asyncio.gather if verbose == 0 else tqdm_asyncio.gather
-        return await gather(*async_calls)
+        completions = await gather(*async_calls)
+
+        # Add `.backend` attribute to keep track of which API did which completion
+        for i_, completion in enumerate(completions):
+            completion.backend = backend_idxs[i_]
+        return completions
 
     range_ = np.arange(0, n_inputs, concurrency)
     range_ = tqdm(range_) if verbose else range_
@@ -118,7 +168,7 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,
 
 # Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
 #          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
-retry = retry_tenacity(wait=wait_random_exponential(exp_base=1.2, multiplier=.5, max=70), 
-                       stop=stop_after_attempt(300))
-# retry = retry_tenacity(wait=wait_random(), stop=stop_after_attempt(100))
+# retry = retry_tenacity(wait=wait_random(), stop=stop_after_attempt(200))
+retry = retry_tenacity(wait=wait_random_exponential(exp_base=2, max=61), 
+                       stop=stop_after_attempt(200))
 # retry = lambda x: x          # Dummy retry func, useful for debugging 
