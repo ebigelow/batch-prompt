@@ -122,12 +122,12 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,   
         elif type(backend) is dict:
             total_tpm = sum(backend.values())
 
-            async_calls = [lambda backend_, m_args: asyncio.create_task(
-                call_fn(backend_)(get_inputs(i), **m_args)) for i in np.arange(n1, n2, qpb)]
-
-            num_calls = len(async_calls)
+            async_range = np.arange(n1, n2, qpb)
+            num_calls = len(async_range)
+            
             i1, i2 = 0, 0
-            backend_idxs = {}
+            async_calls  = [None] * num_calls
+            backend_idxs = [None] * num_calls
 
             # Split batches according to relative TPM
             for backend_, tpm in backend.items():
@@ -141,7 +141,10 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,   
                 i1 = i2
                 i2 = min(i1 + bk_calls, num_calls)
                 for i_ in range(i1, i2):
-                    async_calls[i_] = async_calls[i_](backend_, m_args)
+                    i = async_range[i_]
+                    f = call_fn(backend_)(get_inputs(i), **m_args)
+
+                    async_calls[i_] = asyncio.create_task(f)
                     backend_idxs[i_] = backend_
         else:
             raise TypeError(f'`backend` ({backend}) must be a string or dict from string to TPM counts')
@@ -169,6 +172,6 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,   
 # Retry + backoff to handle timeout errors, and other noisy errors like 502 bad gateway
 #          https://platform.openai.com/docs/guides/rate-limits/error-mitigation"""
 # retry = retry_tenacity(wait=wait_random(), stop=stop_after_attempt(200))
-retry = retry_tenacity(wait=wait_random_exponential(exp_base=2, max=61), 
-                       stop=stop_after_attempt(200))
+retry = retry_tenacity(wait=wait_random_exponential(exp_base=2, max=15), 
+                       stop=stop_after_attempt(100))
 # retry = lambda x: x          # Dummy retry func, useful for debugging 
