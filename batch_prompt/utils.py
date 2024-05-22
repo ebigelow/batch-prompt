@@ -57,7 +57,22 @@ CLIENTS = {
             api_version='2024-02-01',   #'2022-12-01',
             http_client=http_async
         )
-    } if keys.OPENAI_API_KEY != 'MY_API_KEY' else None,
+    } if keys.AZURE_API_KEY != 'MY_API_KEY' else None,
+
+    'azure-sweden': {    # TODO ---- this is getting hacky and should be refactored asap    - split into clients.py file + make keys.py a dict
+        'sync': AzureOpenAI(
+            api_key=keys.AZURE_API_KEY_2,
+            azure_endpoint=keys.AZURE_OPENAI_ENDPOINT_2,
+            api_version='2024-02-01',   #'2022-12-01',
+            http_client=http_client
+        ),
+        'async': AsyncAzureOpenAI(
+            api_key=keys.AZURE_API_KEY_2,
+            azure_endpoint=keys.AZURE_OPENAI_ENDPOINT_2,
+            api_version='2024-02-01',   #'2022-12-01',
+            http_client=http_async
+        )
+    } if keys.AZURE_API_KEY_2 != 'MY_API_KEY' else None,
 
     # https://docs.together.ai/reference/completions
     'together': {
@@ -75,7 +90,7 @@ CLIENTS = {
 # This is needed for async batching across multiple backends simultaneously
 MODEL_MAP = {
     'azure': {
-        'gpt-3.5-turbo-0613': 'gpt-35-0613', 
+        'gpt-3.5-turbo-0613': 'gpt-35-0613',    #  gpt-3.5-turbo-0125
         'gpt-3.5-turbo-instruct-0914': 'gpt-35-instruct-0914'
     }
 }
@@ -133,8 +148,8 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,   
             for backend_, tpm in backend.items():
 
                 m_args = model_args.copy()
-                if backend_ == 'azure':
-                    m_args['model'] = MODEL_MAP[backend_][m_args['model']]
+                if 'azure' in backend_:
+                    m_args['model'] = MODEL_MAP['azure'][m_args['model']]
 
                 bk_calls = np.ceil(num_calls * tpm / total_tpm).astype(int)
 

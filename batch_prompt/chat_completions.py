@@ -8,7 +8,7 @@ from batch_prompt.utils import retry, CLIENTS, print_call_summary, run_async, si
 
 
 DEFAULT_MODEL_ARGS = {
-    'model': 'gpt-3.5-turbo-0125',
+    'model': 'gpt-3.5-turbo-0613',  #'gpt-3.5-turbo-0125',
     'n': 1,
     'max_tokens': 5,
     'temperature': 1.0,
