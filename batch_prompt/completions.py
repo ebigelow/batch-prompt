@@ -2,7 +2,6 @@ from math import ceil
 from time import time
 from tqdm import tqdm, trange
 from pprint import pprint
-from wrapt_timeout_decorator import timeout
 
 from batch_prompt.utils import retry, print_call_summary, run_async, CLIENTS, simplify_completion
 
@@ -22,7 +21,6 @@ def complete_backoff(backend, *args, **kwargs):
 
 def complete_async_backoff(backend):
     @retry
-    @timeout(20)
     async def f(prompt, *args, **kwargs):
         client = CLIENTS[backend]['async']
         return await client.completions.create(prompt=prompt, *args, **kwargs)
@@ -108,7 +106,8 @@ def get_completions(prompt, prompt_args=None, model_args=None, verbose=2,
     """
     
     prompts, prompt_args = listify_prompts(prompt, prompt_args)
-    formatted_prompts = [p.format(**kwargs) for p, kwargs in zip(prompts, prompt_args)]
+    formatted_prompts = [p.format(**kwargs) if kwargs else p     # TODO: this causes errors when the prompt string has unintentional {}. is there a better way to do string formatting?
+                         for p, kwargs in zip(prompts, prompt_args)]
     
     # Model Args
     m_args = DEFAULT_MODEL_ARGS.copy()
