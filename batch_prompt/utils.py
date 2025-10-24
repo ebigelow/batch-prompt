@@ -175,6 +175,8 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,   
 
     get_inputs = lambda i: inputs_ls[i : i+qpb] if qpb > 1 else inputs_ls[i]
 
+    get_model_args = lambda i: model_args[i] if (type(model_args) is list) else model_args
+
     ####### TODO
     if backend == 'google':
         concurrency = min(300, n_inputs)
@@ -189,7 +191,7 @@ def run_async(call_fn, inputs_ls, model_args, verbose=1, queries_per_batch=1,   
         if type(backend) is str:
             backend_idxs = defaultdict(lambda: backend)   # map from async_call index -> backend
             async_calls = [asyncio.create_task(
-                call_fn(backend)(get_inputs(i), **model_args)) for i in np.arange(n1, n2, qpb)]
+                call_fn(backend)(get_inputs(i), **get_model_args(i))) for i in np.arange(n1, n2, qpb)]
 
         # Multiple backends   -  dict mapping from backend to TPM, e.g. {'openai': 90, 'azure': 240}
         elif type(backend) is dict:

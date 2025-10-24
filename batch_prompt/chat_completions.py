@@ -37,7 +37,7 @@ def listify_messages(messages, messages_args=None):
 
 
 def get_chat_completions(messages, messages_args=None, model_args=None, verbose=2, 
-                         backend='openai', **kwargs):
+                         backend='openai', zip_model_args=False, **kwargs):
     # Note: chat completions does not work in jupyter due to async
     messages_ls, messages_args_ls = zip(*listify_messages(messages, messages_args))
     formatted_msgs = [[{'role': m['role'], 
@@ -47,9 +47,10 @@ def get_chat_completions(messages, messages_args=None, model_args=None, verbose=
 
     # Model Args
     m_args = DEFAULT_MODEL_ARGS.copy()
-    if model_args is not None:
+    if type(model_args) is dict:
         m_args.update(model_args)
-    n = m_args.get('n', 1)
+    elif type(model_args) is list:
+        m_args = [(m_args | m) for m in model_args]
 
     if verbose > 1:
         print('='*80)
@@ -70,7 +71,7 @@ def get_chat_completions(messages, messages_args=None, model_args=None, verbose=
             'messages': formatted_msgs[idx],
             'messages_raw': messages_ls[idx],
             'messages_args': messages_args_ls[idx],
-            'model_args': model_args,
+            'model_args': model_args[idx] if (type(model_args) is list) else model_args,
         }
         for idx, completion in enumerate(completions)
         for c in completion.choices
