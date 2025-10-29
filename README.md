@@ -8,7 +8,14 @@ This is a lightweight wrapper for querying LLMs with batches of prompts. Support
 - Split final API calls into smaller batches of prompts (`queries_per_batch` argument), since API limits the number of tokens per LLM query. Note: Completions API is not async, since OpenAI has tighter limits on requests per min. and the API supports batching multiple inputs in a request.
 
 
-Used for [In-Context Learning Dynamics with Random Binary Sequences](https://arxiv.org/abs/2310.17639), which involved querying GPT models with many batches of prompts.
+Used for a few recent papers of mine [1, 2, 3] which involved querying GPT models with many batches of prompts.
+
+[1] [In-Context Learning Dynamics with Random Binary Sequences](https://arxiv.org/abs/2310.17639)
+
+[2] [Forking Paths in Neural Text Generation](https://arxiv.org/abs/2412.07961)
+
+[3] [Language models assign responsibility based on actual rather than counterfactual contributions](https://escholarship.org/content/qt2fz6v5hb/qt2fz6v5hb.pdf)
+
 
 
 ##### Other similar libraries
