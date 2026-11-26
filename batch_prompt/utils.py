@@ -15,8 +15,7 @@ from wrapt_timeout_decorator import timeout
 from openai import OpenAI, AsyncOpenAI, AzureOpenAI, AsyncAzureOpenAI
 from together import Together, AsyncTogether
 
-# from batch_prompt import keys
-from batch_prompt import keys_eb as keys   # TODO
+from batch_prompt import keys
 
 
 # This fixes a weird issue with FAS-RC where OpenAI queries at `httpx.get(..)` cause SSL credentials errors
